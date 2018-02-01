@@ -157,7 +157,7 @@ def loocv(location,effect):
                    pstat(location[i],loc2,eff2), 
                    signedlogp(location[i],loc2,eff2)]
             writer.writerow(row)
-        # end for loop
+        # end for loop (for each contact)
     # end with (open outfile)
 
     # After this loop we should be finished making the file we'll need to
