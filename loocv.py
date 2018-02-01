@@ -119,7 +119,8 @@ def signedlogp(i,location,effect):
 #        2 points, but what if some have only 1, or if a subject's data are
 #        non-contiguous?
 def loocv(location,effect):
-    for gi in effect:
+    for i in range(effect.size):
+        
         
         # report the identifier for this subject, and probably also 
         # the location and effect for the first contact, e.g. as a row
