@@ -2,7 +2,10 @@
 """
 Spyder Editor
 
-This is a temporary script file.
+Kevin J. Black, M.D.
+
+See https://github.com/BlackHershey/3Dstat-LOOCV for purpose and for
+any newer versions.
 """
 
 import math
@@ -11,7 +14,7 @@ from scipy.stats import norm  # for the pdf of the std. normal distribution, use
 from scipy.stats import t  # for function pstat
 
 # Definitions of main variables
-n_subjects = 9
+n_points = 9
 fwhm = 3.0 # mm
 gauss_sd = fwhm/(2*math.sqrt(2*math.log(2)))  # ~1.274 mm
 # NOTE: the maximum value of the nl. distribution with this fwhm is 
@@ -21,12 +24,13 @@ peak_pdf = 0.31314575956655044 # dimensionless
 # Data
 # TODO: read in effect and location from CSV files, rather than using fake
 #   numbers entered here to test
-effect = np.asarray(list(range(n_subjects)))/10
+effect = np.arange(n_points)/10
+subject = np.asarray([1,1,2,2,3,4,5,5,6])
 loc_mean = np.asarray([14.0,-17.0,-3.0])
-loc_sd   = np.asarray([1.,1.,1.])
-location = np.stack([loc_mean[0]+loc_sd[0]*np.random.randn(n_subjects),
-                     loc_mean[1]+loc_sd[1]*np.random.randn(n_subjects),
-                     loc_mean[2]+loc_sd[2]*np.random.randn(n_subjects)]).T
+loc_sd   = 1.0*np.ones(3)
+location = np.stack([loc_mean[0]+loc_sd[0]*np.random.randn(n_points),
+                     loc_mean[1]+loc_sd[1]*np.random.randn(n_points),
+                     loc_mean[2]+loc_sd[2]*np.random.randn(n_points)]).T
 #  location[0] returns x,y,z for subject 0
 
 # TODO: validate input to all functions
@@ -70,6 +74,10 @@ def ghat(i,location,effect):
     return np.sum(np.multiply(effect,weight(i,location))) / np.sum(weight(i,location))
 
 def tstat(i,location,effect):
+    """returns the scalar t from Eisenstein et al 2014 based on a 
+    point i, an array location of contact coordinates, and an array effect
+    of the effect observed when stimulated at that coordinate
+    """
     if N(i,location)<6:
         return 0.0
     else:
@@ -80,15 +88,71 @@ def tstat(i,location,effect):
             np.sqrt(SSEweighted/(N(i,location)-1))
 
 def pstat(i,location,effect):
+    """returns the scalar p from Eisenstein et al 2014 based on a 
+    point i, an array location of contact coordinates, and an array effect
+    of the effect observed when stimulated at that coordinate
+    """
     return 1.0 - t.cdf(tstat(i,location,effect), N(i,location)-1)  # N-1 d.f.
 
 def signedlogp(i,location,effect):
+    """Returns the scalar value we used to create 2D and 3D p images for
+    display, in Eisenstein et al 2014 (because 3D Slicer didn't have
+    logarithmic display color scales, and because we wanted to show
+    p values where mean effect and t were negative in a different color
+    than p values where mean effect and t were positive).
+    Input: a point i, an array location of contact coordinates, and 
+    an array effect of the effect observed when stimulated at that coordinate
+    Output: sign(t)*(-log10(p))
+    """
     t = tstat(i,location,effect)
     p = pstat(i,location,effect)
-    if p < 1e-20:
+    if N(i,location)<6:
+        # TODO: check that Jon's log10p images use zero where N<6
+        return 0.0 
+    elif p < 1e-20:
         return math.copysign(20.0,t) # = sign(t)*20
     else:
-        # copysign applies the sign of temp to abs. val. of 1st argument
+        # copysign applies the sign of temp to _abs. val._ of 1st argument
         return math.copysign(math.log10(p),t) # = sign(t)*(-log10(p))
 
+# TODO: how do I represent 2 contacts from 1 subject? Easy if everyone has
+#        2 points, but what if some have only 1, or if a subject's data are
+#        non-contiguous?
+def loocv(location,effect):
+    for gi in effect:
+        
+        # report the identifier for this subject, and probably also 
+        # the location and effect for the first contact, e.g. as a row
+        # in a CSV file. Then ditto with a new row for a second location
+        # and effect for the same subject. (But those rows will have new
+        # data columns added.) Also report (for abscissa on later plot) 
+        # the actual effect at each location at which this subject 
+        # was stimulated. See CSV format below.
 
+        # Drop ALL the subject's values from the location and effect arrays,
+        # to create new location and effect arrays with that subject's
+        # values missing.
+        
+        # Using those new arrays, report (for ordinate on later plot) the
+        # weighted mean for each location at which this subject was stimulated,
+        # i.e. the expected effect predicted by all the other subjects' data
+        # for stimulation at that location. 
+        # BUT, also report N at that location, and the p value at that
+        # location, so we can ignore (or weight lower) any prediction made 
+        # at locations where we had little data [not counting this subject's
+        # data], or at which we had low confidence at that point anyway.
+
+        # Sample header and one subject's data for output CSV file:
+        # "subject","x","y","z","observed_effect","predicted_effect",
+        # subject_id,x1,y1,z1,effect1,weighted_mean1,N1,p1
+        # subject_id,x2,y2,z2,effect2,weighted_mean2,N2,p2
+        
+    # after this loop we should be finished making the file we'll need to
+    # test how well we predict--at points where we are relatively more
+    # confident that the prediction may be meaningful. WARNING: as we warn
+    # in the Eisenstein et al 2014 report, the permutation method we 
+    # implemented does not tell us whether any given point in the statistical 
+    # images is significant, or whether any given p threshold is low enough 
+    # to render the prediction at a given point trustworthy. So any 
+    # threshold for p (or for N, for that matter) is arbitrary, and that
+    # caveat should be kept in mind in interpreting the results. 

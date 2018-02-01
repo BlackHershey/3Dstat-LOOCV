@@ -35,3 +35,6 @@ def N(location,x):
         if weight_pts(contact,x) >= 0.05:
             sum += 1
     return sum
+
+n_subjects = np.unique(subject).size # number of unique subjects
+for subject in np.unique(subject):
