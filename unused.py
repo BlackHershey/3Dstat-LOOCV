@@ -38,3 +38,17 @@ def N(location,x):
 
 n_subjects = np.unique(subject).size # number of unique subjects
 for subject in np.unique(subject):
+    pass
+
+# np.delete(location,j,axis=0)  # removes the j'th point from location
+
+with open(outputfilename,'w') as datafile:
+    np.savetxt(datafile,eff2,fmt='%18f',delimiter=',')
+
+            np.savetxt(outfile,row,fmt='%18f',delimiter=',')
+
+    "import csv\n",
+    "with open('Cp_estimation_20150304.csv', 'rb') as datafile:\n",
+    "    data  = np.genfromtxt(datafile, delimiter=\",\", usecols=range(0,7), names=True)  # imports as floats\n",
+    "    # the file has 7 blank rows at the end ...\n",
+    "    data = data[:-7]\n",

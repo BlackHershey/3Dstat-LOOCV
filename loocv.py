@@ -12,8 +12,12 @@ import math
 import numpy as np
 from scipy.stats import norm  # for the pdf of the std. normal distribution, used in function weight
 from scipy.stats import t  # for function pstat
+import csv
 
-# Definitions of main variables
+# Definitions of variables
+inputfilename  = '3Dstat_input.csv'
+# TODO: use modified input filename as output filename
+outputfilename = '3Dstat_loocv.csv'
 n_points = 9
 fwhm = 3.0 # mm
 gauss_sd = fwhm/(2*math.sqrt(2*math.log(2)))  # ~1.274 mm
@@ -31,7 +35,7 @@ loc_sd   = 1.0*np.ones(3)
 location = np.stack([loc_mean[0]+loc_sd[0]*np.random.randn(n_points),
                      loc_mean[1]+loc_sd[1]*np.random.randn(n_points),
                      loc_mean[2]+loc_sd[2]*np.random.randn(n_points)]).T
-#  location[0] returns x,y,z for subject 0
+#  location[0] returns x,y,z for contact location 0
 
 # TODO: validate input to all functions
 
@@ -53,8 +57,6 @@ def N(x,location,threshold=0.05):
     point x and an array location of contact coordinates
     """
     return np.sum(weight(x,location)>=threshold)
-
-# np.delete(location,j,axis=0)  # removes the j'th point from location
 
 def ghat(i,location,effect):
     """returns g^_i as defined in Eisenstein et al 2014, i.e. the weighted
@@ -119,41 +121,56 @@ def signedlogp(i,location,effect):
 #        2 points, but what if some have only 1, or if a subject's data are
 #        non-contiguous?
 def loocv(location,effect):
-    for i in range(effect.size):
-        
-        
-        # report the identifier for this subject, and probably also 
-        # the location and effect for the first contact, e.g. as a row
-        # in a CSV file. Then ditto with a new row for a second location
-        # and effect for the same subject. (But those rows will have new
-        # data columns added.) Also report (for abscissa on later plot) 
-        # the actual effect at each location at which this subject 
-        # was stimulated. See CSV format below.
+    # TODO: deal with over-writing file with 'w' below, if it exists
+    with open(outputfilename,'w') as outfile:
+        header='subject,x,y,z,observed,predicted,N,p,signedlog10p'
+        outfile.write(header+'\n')
+    with open(outputfilename,'a') as outfile:
+        writer = csv.writer(outfile)
+        for i in range(effect.size):
+            # Find index(indices) corresponding to this subject
+            s = subject[i]
+            s_index = subject==s
+            esses = s_index.nonzero()[0]
+            # Drop ALL the subject's values from (a copy of) the location and 
+            # effect arrays, to create new location and effect arrays with that 
+            # subject's values missing.
+            loc2 = np.delete(location,esses,axis=0)
+            eff2 = np.delete(effect,  esses,axis=0)
+    
+            # Using those new arrays, report (for ordinate on later plot) the
+            # weighted mean for this location at which this subject was stimulated,
+            # i.e. the expected effect predicted by all the other subjects' data
+            # for stimulation at that location. 
+            # BUT, also report N at that location, and the p value at that
+            # location, so we can ignore (or weight lower) any prediction made 
+            # at locations where we had little data [not counting this subject's
+            # data], or at which we had low confidence at that point anyway.
+            
+            # Sample header and one subject's data for output CSV file:
+            # "subject","x","y","z","observed","predicted","N","p"
+            # subject_id,x1,y1,z1,effect1,weighted_mean1,N1,p1,logp1
+            # subject_id,x2,y2,z2,effect2,weighted_mean2,N2,p2logp2
 
-        # Drop ALL the subject's values from the location and effect arrays,
-        # to create new location and effect arrays with that subject's
-        # values missing.
-        
-        # Using those new arrays, report (for ordinate on later plot) the
-        # weighted mean for each location at which this subject was stimulated,
-        # i.e. the expected effect predicted by all the other subjects' data
-        # for stimulation at that location. 
-        # BUT, also report N at that location, and the p value at that
-        # location, so we can ignore (or weight lower) any prediction made 
-        # at locations where we had little data [not counting this subject's
-        # data], or at which we had low confidence at that point anyway.
+            row = [subject[i], *location[i], effect[i],
+                   ghat(location[i],loc2,eff2), N(location[i],loc2),
+                   pstat(location[i],loc2,eff2), 
+                   signedlogp(location[i],loc2,eff2)]
+            writer.writerow(row)
+        # end for loop
+    # end with (open outfile)
 
-        # Sample header and one subject's data for output CSV file:
-        # "subject","x","y","z","observed_effect","predicted_effect",
-        # subject_id,x1,y1,z1,effect1,weighted_mean1,N1,p1
-        # subject_id,x2,y2,z2,effect2,weighted_mean2,N2,p2
-        
-    # after this loop we should be finished making the file we'll need to
+    # After this loop we should be finished making the file we'll need to
     # test how well we predict--at points where we are relatively more
-    # confident that the prediction may be meaningful. WARNING: as we warn
+    # confident that the prediction may be meaningful. NOTE: as we warn
     # in the Eisenstein et al 2014 report, the permutation method we 
     # implemented does not tell us whether any given point in the statistical 
     # images is significant, or whether any given p threshold is low enough 
     # to render the prediction at a given point trustworthy. So any 
     # threshold for p (or for N, for that matter) is arbitrary, and that
     # caveat should be kept in mind in interpreting the results. 
+
+# TODO:
+# make this executable and add a main function body, viz.:
+# read in the input file
+# run loocv(location,effect)
