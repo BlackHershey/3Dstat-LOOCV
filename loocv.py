@@ -18,7 +18,6 @@ import csv
 inputfilename  = '3Dstat_input.csv'
 # TODO: use modified input filename as output filename
 outputfilename = '3Dstat_loocv.csv'
-n_points = 9
 fwhm = 3.0 # mm
 gauss_sd = fwhm/(2*math.sqrt(2*math.log(2)))  # ~1.274 mm
 # NOTE: the maximum value of the nl. distribution with this fwhm is 
@@ -28,6 +27,7 @@ peak_pdf = 0.31314575956655044 # dimensionless
 # Data
 # TODO: read in effect and location from CSV files, rather than using fake
 #   numbers entered here to test
+n_points = 9
 effect = np.arange(n_points)/10
 subject = np.asarray([1,1,2,2,3,4,5,5,6])
 loc_mean = np.asarray([14.0,-17.0,-3.0])
