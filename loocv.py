@@ -13,29 +13,42 @@ import numpy as np
 from scipy.stats import norm  # for the pdf of the std. normal distribution, used in function weight
 from scipy.stats import t  # for function pstat
 import csv
+import argparse
 
 # Definitions of variables
-inputfilename  = '3Dstat_input.csv'
-# TODO: use modified input filename as output filename
-outputfilename = '3Dstat_loocv.csv'
 fwhm = 3.0 # mm
 gauss_sd = fwhm/(2*math.sqrt(2*math.log(2)))  # ~1.274 mm
 # NOTE: the maximum value of the nl. distribution with this fwhm is 
 #    ~0.313, when x = the mean
 peak_pdf = 0.31314575956655044 # dimensionless
 
-# Data
-# TODO: read in effect and location from CSV files, rather than using fake
-#   numbers entered here to test
-n_points = 9
-effect = np.arange(n_points)/10
-subject = np.asarray([1,1,2,2,3,4,5,5,6])
-loc_mean = np.asarray([14.0,-17.0,-3.0])
-loc_sd   = 1.0*np.ones(3)
-location = np.stack([loc_mean[0]+loc_sd[0]*np.random.randn(n_points),
-                     loc_mean[1]+loc_sd[1]*np.random.randn(n_points),
-                     loc_mean[2]+loc_sd[2]*np.random.randn(n_points)]).T
-#  location[0] returns x,y,z for contact location 0
+# Input data
+real_data = False
+if real_data:
+    # https://docs.python.org/3/howto/argparse.html
+    parser = argparse.ArgumentParser(description="act on a text effect file")
+    parser.add_argument("effect_file", 
+                help="text effect file e.g. Valence_Text_File_6-14_AG.csv2")
+    args = parser.parse_args()
+    # TODO: validate file input etc.
+#    data = pd.read_csv(args.effect_file)
+    data = np.genfromtxt(args.effect_file, delimiter=",", names=True,
+                         dtype="uint16,float64,S8") 
+    subject = data['subjects']
+    effect  = data['measures']
+    dv      = data['DV']
+    #  now read in coordinates data "location" for each line in effect
+
+else:  # we're testing with a toy dataset
+    inputfilename  = '3Dstat_input.csv'
+    outputfilename = '3Dstat_loocv.csv'
+    n_points = 9
+    effect = np.arange(n_points)/10
+    subject = np.asarray([1,1,2,2,3,4,5,5,6])
+    loc_mean = np.asarray([14.0,-17.0,-3.0])
+    loc_sd   = 1.0*np.ones(3)
+    location = loc_mean + loc_sd*np.random.randn(n_points,3)
+    #  location[0] returns x,y,z for contact location 0
 
 # TODO: validate input to all functions
 
