@@ -23,7 +23,9 @@ gauss_sd = fwhm/(2*math.sqrt(2*math.log(2)))  # ~1.274 mm
 peak_pdf = 0.31314575956655044 # dimensionless
 
 # Input data
-real_data = False
+vdata_filename = 'Ventral_Coordinates_xyz_Atl_AG_2-10-16.txt'
+ddata_filename = 'Dorsal_Coordinates_xyz_Atl_AG_2-10-16.txt'
+real_data = True
 if real_data:
     # https://docs.python.org/3/howto/argparse.html
     parser = argparse.ArgumentParser(description="act on a text effect file")
@@ -32,13 +34,25 @@ if real_data:
     args = parser.parse_args()
     # TODO: validate file input etc.
 #    data = pd.read_csv(args.effect_file)
-    data = np.genfromtxt(args.effect_file, delimiter=",", names=True,
+    edata = np.genfromtxt(args.effect_file, delimiter=",", names=True,
                          dtype="uint16,float64,S8") 
-    subject = data['subjects']
-    effect  = data['measures']
-    dv      = data['DV']
+    subject = edata['subjects']
+    effect  = edata['measures']
+    dv      = edata['DV']
+    location = np.zeros(subject.size)
     #  now read in coordinates data "location" for each line in effect
-
+    vdata = np.genfromtxt(vdata_filename, delimiter=",", names=True)
+    ddata = np.genfromtxt(ddata_filename, delimiter=",", names=True)
+    for i in range(subject.size):
+        assert dv[i]==b'dorsal' or dv[i]==b'ventral', \
+            'ERROR: {0} in DV info from effect file.'.format(dv[i])
+        if dv[i] == b'dorsal':
+            # dv[i].decode() is the regular old string 'ventral', FYI
+            location[i] = \
+                np.asscalar(vdata[np.where(ddata['DVP_id']==i)])[2:]
+        else: # dv[i] == b'ventral':
+            location[i] = \
+                np.asscalar(vdata[np.where(vdata['DVP_id']==i)])[2:]
 else:  # we're testing with a toy dataset
     inputfilename  = '3Dstat_input.csv'
     outputfilename = '3Dstat_loocv.csv'
@@ -130,9 +144,6 @@ def signedlogp(i,location,effect):
         # copysign applies the sign of temp to _abs. val._ of 1st argument
         return math.copysign(math.log10(p),t) # = sign(t)*(-log10(p))
 
-# TODO: how do I represent 2 contacts from 1 subject? Easy if everyone has
-#        2 points, but what if some have only 1, or if a subject's data are
-#        non-contiguous?
 def loocv(location,effect):
     # TODO: deal with over-writing file with 'w' below, if it exists
     with open(outputfilename,'w') as outfile:
