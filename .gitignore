@@ -1,6 +1,11 @@
-# specific to this file:
+# specific to this repo
 deleteme*
-data/
+*.txt
+*.csv*
+*.xlsx
+
+# backup Notepadd++ files
+*.bak
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
