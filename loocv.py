@@ -14,6 +14,7 @@ from scipy.stats import norm  # for the pdf of the std. normal distribution, use
 from scipy.stats import t  # for function pstat
 import csv
 import argparse
+import os
 
 # Definitions of variables
 fwhm = 3.0 # mm
@@ -23,36 +24,46 @@ gauss_sd = fwhm/(2*math.sqrt(2*math.log(2)))  # ~1.274 mm
 peak_pdf = 0.31314575956655044 # dimensionless
 
 # Input data
-vdata_filename = 'Ventral_Coordinates_xyz_Atl_AG_2-10-16.txt'
-ddata_filename = 'Dorsal_Coordinates_xyz_Atl_AG_2-10-16.txt'
+data_dir = os.path.join(os.getcwd(),'data','from_linux')
+vdata_filename = os.path.join(data_dir,
+                              'Ventral_Coordinates_xyz_Atl_AG_2-10-16.txt')
+ddata_filename = os.path.join(data_dir,
+                              'Dorsal_Coordinates_xyz_Atl_AG_2-10-16.txt')
 real_data = True
 if real_data:
     # https://docs.python.org/3/howto/argparse.html
     parser = argparse.ArgumentParser(description="act on a text effect file")
     parser.add_argument("effect_file", 
-                help="text effect file e.g. Valence_Text_File_6-14_AG.csv2")
+                help="text effect file e.g. Valence_Text_File_6-14_AG.csv")
     args = parser.parse_args()
     # TODO: validate file input etc.
 #    data = pd.read_csv(args.effect_file)
-    edata = np.genfromtxt(args.effect_file, delimiter=",", names=True,
+    effectfilename = args.effect_file
+    edata = np.genfromtxt(effectfilename, delimiter=",", names=True,
                          dtype="uint16,float64,S8") 
+    fileroot, fileext = os.path.splitext(effectfilename)
+    outputfilename = fileroot + '_LOOCV.csv'
     subject = edata['subjects']
     effect  = edata['measures']
     dv      = edata['DV']
-    location = np.zeros(subject.size)
+    location = np.zeros((subject.size,3))
     #  now read in coordinates data "location" for each line in effect
-    vdata = np.genfromtxt(vdata_filename, delimiter=",", names=True)
-    ddata = np.genfromtxt(ddata_filename, delimiter=",", names=True)
+    vdata = np.genfromtxt(vdata_filename, delimiter="\t", names=True,
+                          dtype='uint16,S1,float64,float64,float64')
+    ddata = np.genfromtxt(ddata_filename, delimiter="\t", names=True,
+                          dtype='uint16,S1,float64,float64,float64')
     for i in range(subject.size):
         assert dv[i]==b'dorsal' or dv[i]==b'ventral', \
             'ERROR: {0} in DV info from effect file.'.format(dv[i])
         if dv[i] == b'dorsal':
             # dv[i].decode() is the regular old string 'ventral', FYI
             location[i] = \
-                np.asscalar(vdata[np.where(ddata['DVP_id']==i)])[2:]
+                np.asscalar(ddata[np.where(ddata['DVP_id']==\
+                                           edata['subjects'][i])])[2:]
         else: # dv[i] == b'ventral':
             location[i] = \
-                np.asscalar(vdata[np.where(vdata['DVP_id']==i)])[2:]
+                np.asscalar(vdata[np.where(vdata['DVP_id']==\
+                                           edata['subjects'][i])])[2:]
 else:  # we're testing with a toy dataset
     inputfilename  = '3Dstat_input.csv'
     outputfilename = '3Dstat_loocv.csv'
@@ -194,7 +205,5 @@ def loocv(location,effect):
     # threshold for p (or for N, for that matter) is arbitrary, and that
     # caveat should be kept in mind in interpreting the results. 
 
-# TODO:
-# make this executable and add a main function body, viz.:
-# read in the input file
-# run loocv(location,effect)
+# Finally, data's loaded, functions defined, so do what we came to do:
+loocv(location,effect)
