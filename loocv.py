@@ -43,6 +43,7 @@ if real_data:
                          dtype="uint16,float64,S8") 
     fileroot, fileext = os.path.splitext(effectfilename)
     outputfilename = fileroot + '_LOOCV.csv'
+    checkfilename  = fileroot + '_checkp.csv'
     subject = edata['subjects']
     effect  = edata['measures']
     dv      = edata['DV']
@@ -142,7 +143,7 @@ def signedlogp(i,location,effect):
     than p values where mean effect and t were positive).
     Input: a point i, an array location of contact coordinates, and 
     an array effect of the effect observed when stimulated at that coordinate
-    Output: sign(t)*(-log10(p))
+    Output: sign(t)*(-log10(p)), unless N<6, when it returns zero.
     """
     t = tstat(i,location,effect)
     p = pstat(i,location,effect)
@@ -153,12 +154,63 @@ def signedlogp(i,location,effect):
         return math.copysign(20.0,t) # = sign(t)*20
     else:
         # copysign applies the sign of temp to _abs. val._ of 1st argument
+        # but for 0<p<1, |log10p| = -log10p.
         return math.copysign(math.log10(p),t) # = sign(t)*(-log10(p))
 
+def check_vs_p_image(location,effect):
+    """Creates a file 'checkfilename' that should contain more or less
+       the same numbers for weighted mean ("predicted"), N and p as 
+       are in the weighted mean, N and p images. "More or less" is because
+       the point value at the exact contact location is not the mean over
+       the volume of the voxel in which that contact is located.
+       Input: 
+           location: a numpy array with 3 columns x,y,z for each contact
+           effect: a 1-D numpy array with the effect observed with stimulation
+               at the contact whose location is at the same index in the
+               "location" array
+       Output:
+           a file 'checkfilename' defined near the top of this file.
+           signedlog10p means sign(t)*|log10(p)|, or zero where N<6. 
+           See the signedlogp() docstring for rationale.
+    """
+    # TODO: the "DV" column comes from a global variable rather than being 
+    #    passed in as a parameter. Fix that?
+    with open(checkfilename,'w') as f:
+        header='subject,DV,x,y,z,observed,predicted,N,p,signedlog10p'
+        f.write(header+'\n')
+    with open(checkfilename,'a') as f:
+        writer = csv.writer(f)
+        for i in range(effect.size):
+            row = [subject[i], dv[i].decode(), *location[i], effect[i],
+                   ghat(location[i],location,effect), 
+                   N(location[i],location),
+                   pstat(location[i],location,effect), 
+                   signedlogp(location[i],location,effect)]
+            writer.writerow(row)
+
 def loocv(location,effect):
+    """Creates a file 'outputfilename' that contains, for each contact tested,
+       a leave-one-out cross-validation measure of utility of the statistical
+       images created by the procedure in Eisenstein et al 2014. 
+       Input: 
+           location: a numpy array with 3 columns x,y,z for each contact
+           effect: a 1-D numpy array with the effect observed with stimulation
+               at the contact whose location is at the same index in the
+               "location" array
+       Output:
+           a CSV file 'outputfilename' defined near the top of this file, 
+           in which subject, DV, x,y,z and observed effect are copied from 
+           the effect file provided as a command-line argument and the D & V 
+           location files named near the top of this file. "Predicted" is the
+           weighted mean predicted for that location based only on the data
+           remaining after removing all data from this subject. N, p and
+           signedlog10p are as described for the function check_vs_p_image().
+    """
+    # TODO: the "DV" column comes from a global variable rather than being 
+    #    passed in as a parameter. Fix that?
     # TODO: deal with over-writing file with 'w' below, if it exists
     with open(outputfilename,'w') as outfile:
-        header='subject,x,y,z,observed,predicted,N,p,signedlog10p'
+        header='subject,DV,x,y,z,observed,predicted,N,p,signedlog10p'
         outfile.write(header+'\n')
     with open(outputfilename,'a') as outfile:
         writer = csv.writer(outfile)
@@ -166,7 +218,7 @@ def loocv(location,effect):
             # Find index(indices) corresponding to this subject
             s = subject[i]
             s_index = subject==s
-            esses = s_index.nonzero()[0]
+            esses = s_index.nonzero()[0]  # same as np.where(subject==s)
             # Drop ALL the subject's values from (a copy of) the location and 
             # effect arrays, to create new location and effect arrays with that 
             # subject's values missing.
@@ -187,7 +239,7 @@ def loocv(location,effect):
             # subject_id,x1,y1,z1,effect1,weighted_mean1,N1,p1,logp1
             # subject_id,x2,y2,z2,effect2,weighted_mean2,N2,p2logp2
 
-            row = [subject[i], *location[i], effect[i],
+            row = [subject[i], dv[i].decode(), *location[i], effect[i],
                    ghat(location[i],loc2,eff2), N(location[i],loc2),
                    pstat(location[i],loc2,eff2), 
                    signedlogp(location[i],loc2,eff2)]
@@ -205,7 +257,10 @@ def loocv(location,effect):
     # threshold for p (or for N, for that matter) is arbitrary, and that
     # caveat should be kept in mind in interpreting the results. 
 
-# Finally, data's loaded, functions defined, so do what we came to do:
+# Finally, data loaded, functions defined, so do what we came to do:
+check_vs_p_image(location,effect)
 loocv(location,effect)
 
+print('Check p image at each contact location with {0}'.format(
+        checkfilename))
 print('LOOCV results written to {0}'.format(outputfilename))
