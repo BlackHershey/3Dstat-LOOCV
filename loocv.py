@@ -207,3 +207,5 @@ def loocv(location,effect):
 
 # Finally, data's loaded, functions defined, so do what we came to do:
 loocv(location,effect)
+
+print('LOOCV results written to {0}'.format(outputfilename))
