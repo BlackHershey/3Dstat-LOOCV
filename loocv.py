@@ -8,73 +8,99 @@ See https://github.com/BlackHershey/3Dstat-LOOCV for purpose and for
 any newer versions.
 """
 
-import math
-import numpy as np
-from scipy.stats import norm  # for the pdf of the std. normal distribution, used in function weight
-from scipy.stats import t  # for function pstat
-import csv
 import argparse
 import os
+import math
+import numpy as np
+from scipy.stats import norm  # for the pdf of the std. normal distribution, 
+# used in function weight
+from scipy.stats import t  # for function pstat
+import csv
+
+ln2 = math.log(2)
+
+# Read real data from files? (as opposed to generate a toy data set)
+real_data = True
+
+# Write out results?
+write_results = True
 
 # Definitions of variables
-fwhm = 3.0 # mm
-gauss_sd = fwhm/(2*math.sqrt(2*math.log(2)))  # ~1.274 mm
-# NOTE: the maximum value of the nl. distribution with this fwhm is 
-#    ~0.313, when x = the mean
-peak_pdf = 0.31314575956655044 # dimensionless
+fwhm = np.linspace(1.0,4.0,num=1+30)
+# NOTE: in the Eisenstein et al. 2014 paper, we used FWHM = 3.0mm.
+gauss_sd = fwhm/(2*math.sqrt(2*ln2))  # ~1.274 mm, for FWHM=3.0mm
+peak_pdf = norm.pdf(0.0,scale = fwhm/(2*math.sqrt(2*ln2))) 
+# NOTE: That's the maximum value of the nl. distribution with this fwhm
+# It's 0.3131, dimensionless, for FWHM=3
 
-# Input data
-data_dir = os.path.join(os.getcwd(),'data','from_linux')
-vdata_filename = os.path.join(data_dir,
+# Default input data filenames
+default_data_dir = os.path.join(os.getcwd(),'data','from_linux')
+default_vdata_filename = os.path.join(default_data_dir,
                               'Ventral_Coordinates_xyz_Atl_AG_2-10-16.txt')
-ddata_filename = os.path.join(data_dir,
+default_ddata_filename = os.path.join(default_data_dir,
                               'Dorsal_Coordinates_xyz_Atl_AG_2-10-16.txt')
-real_data = True
-if real_data:
-    # https://docs.python.org/3/howto/argparse.html
-    parser = argparse.ArgumentParser(description="act on a text effect file")
-    parser.add_argument("effect_file", 
+
+#######################
+# FUNCTION DEFINITIONS
+#######################
+
+def get_data(real_data=True):
+    if real_data:
+        # https://docs.python.org/3/howto/argparse.html
+        parser = argparse.ArgumentParser(
+                description="act on a text effect file")
+        parser.add_argument("effect_file", type=str,
                 help="text effect file e.g. Valence_Text_File_6-14_AG.csv")
-    args = parser.parse_args()
-    # TODO: validate file input etc.
-#    data = pd.read_csv(args.effect_file)
-    effectfilename = args.effect_file
-    edata = np.genfromtxt(effectfilename, delimiter=",", names=True,
-                         dtype="uint16,float64,S8") 
-    fileroot, fileext = os.path.splitext(effectfilename)
-    outputfilename = fileroot + '_LOOCV.csv'
-    checkfilename  = fileroot + '_checkp.csv'
-    subject = edata['subjects']
-    effect  = edata['measures']
-    dv      = edata['DV']
-    location = np.zeros((subject.size,3))
-    #  now read in coordinates data "location" for each line in effect
-    vdata = np.genfromtxt(vdata_filename, delimiter="\t", names=True,
-                          dtype='uint16,S1,float64,float64,float64')
-    ddata = np.genfromtxt(ddata_filename, delimiter="\t", names=True,
-                          dtype='uint16,S1,float64,float64,float64')
-    for i in range(subject.size):
-        assert dv[i]==b'dorsal' or dv[i]==b'ventral', \
-            'ERROR: {0} in DV info from effect file.'.format(dv[i])
-        if dv[i] == b'dorsal':
-            # dv[i].decode() is the regular old string 'ventral', FYI
-            location[i] = \
-                np.asscalar(ddata[np.where(ddata['DVP_id']==\
-                                           edata['subjects'][i])])[2:]
-        else: # dv[i] == b'ventral':
-            location[i] = \
-                np.asscalar(vdata[np.where(vdata['DVP_id']==\
-                                           edata['subjects'][i])])[2:]
-else:  # we're testing with a toy dataset
-    inputfilename  = '3Dstat_input.csv'
-    outputfilename = '3Dstat_loocv.csv'
-    n_points = 9
-    effect = np.arange(n_points)/10
-    subject = np.asarray([1,1,2,2,3,4,5,5,6])
-    loc_mean = np.asarray([14.0,-17.0,-3.0])
-    loc_sd   = 1.0*np.ones(3)
-    location = loc_mean + loc_sd*np.random.randn(n_points,3)
-    #  location[0] returns x,y,z for contact location 0
+        parser.add_argument('-d',"--dorsal", type=str,
+                help="file with dorsal contact coordinates, e.g. "+
+                    default_ddata_filename, 
+                default=default_ddata_filename)
+        parser.add_argument('-v',"--ventral", type=str,
+                help="file with dorsal contact coordinates, e.g. "+
+                    default_ddata_filename,  
+                default=default_vdata_filename)
+        args = parser.parse_args()
+        # TODO: validate file input etc.
+        effectfilename = args.effect_file
+        ddata_filename = args.dorsal
+        vdata_filename = args.ventral
+        edata = np.genfromtxt(effectfilename, delimiter=",", names=True,
+                             dtype="uint16,float64,S8") 
+        fileroot, fileext = os.path.splitext(effectfilename)
+        outputfilename = fileroot + '_LOOCV.csv'
+        checkfilename  = fileroot + '_checkp.csv'
+        subject = edata['subjects']
+        effect  = edata['measures']
+        dv      = edata['DV']
+        location = np.zeros((subject.size,3)) 
+            # 1 row for each subject, 3 columns (x,y,z)
+        #  now read in coordinates data "location" for each line in effect
+        vdata = np.genfromtxt(vdata_filename, delimiter="\t", names=True,
+                              dtype='uint16,S1,float64,float64,float64')
+        ddata = np.genfromtxt(ddata_filename, delimiter="\t", names=True,
+                              dtype='uint16,S1,float64,float64,float64')
+        for i in range(subject.size):
+            assert dv[i]==b'dorsal' or dv[i]==b'ventral', \
+                'ERROR: {0} in DV info from effect file.'.format(dv[i])
+            if dv[i] == b'dorsal':  # literal Unicode? byte string
+                # dv[i].decode() is the regular old string 'ventral', FYI
+                location[i] = \
+                    np.asscalar(ddata[np.where(ddata['DVP_id']==\
+                                               edata['subjects'][i])])[2:]
+            else: # dv[i] == b'ventral':
+                location[i] = \
+                    np.asscalar(vdata[np.where(vdata['DVP_id']==\
+                                               edata['subjects'][i])])[2:]
+    else:  # if not real_data, we're testing with a toy dataset
+        inputfilename  = '3Dstat_input.csv'
+        outputfilename = '3Dstat_loocv.csv'
+        n_points = 9
+        effect = np.arange(n_points)/10
+        subject = np.asarray([1,1,2,2,3,4,5,5,6])
+        loc_mean = np.asarray([14.0,-17.0,-3.0])
+        loc_sd   = 1.0*np.ones(3)
+        location = loc_mean + loc_sd*np.random.randn(n_points,3)
+        #  location[0] returns x,y,z for contact location 0
 
 # TODO: validate input to all functions
 
@@ -84,16 +110,23 @@ def distance(x,location):
     """
     return np.sqrt(np.sum(np.square(x-location), axis=1))
 
-def weight(x,location):
+def weight(x,location,pdfpeak=3.0/(2*math.sqrt(2*ln2))):
     """returns an array of weights as in Eisenstein et al 2014 based on the 
-    distance between the point x and each point in an array location of 
-    contact coordinates
+    distance between the point x and each point in an array 'location' of 
+    contact coordinates, scaled by the scalar pdfpeak so that at x=0 the
+    (maximal) weight is 1. NOTE: scaling by pdfpeak was inadvertently omitted 
+    from the discussion in the paper.
+    The default value for pdfpeak is for FWHM = 3.0mm.
     """
-    return norm.pdf(distance(x,location),loc=0,scale=gauss_sd)/peak_pdf
+    return norm.pdf(distance(x,location),loc=0,scale=gauss_sd)/pdfpeak
+    # We divide by peak_pdf because in the functions below we want to 
+    # threshold at 1/20 of, or 0.05 times, the maximum possible probability 
 
-def N(x,location,threshold=0.05):
+def N(x,location,pdfpeak=3.0/(2*math.sqrt(2*)),threshold=0.05):
     """returns the scalar value Ni from Eisenstein et al 2014 based on a 
-    point x and an array location of contact coordinates
+    point x and an array location of contact coordinates. The default
+    value for pdfpeak is for FWHM = 3.0mm.
+    Note the division in weight(x,location) by the maximum of the p.d.f.
     """
     return np.sum(weight(x,location)>=threshold)
 
@@ -112,7 +145,7 @@ def ghat(i,location,effect):
         stimulation at point i based on the effect and location data at
         (other) points
     """
-    return np.sum(np.multiply(effect,weight(i,location))) / np.sum(weight(i,location))
+    return np.sum(np.multiply(effect,weight(i,location)))/np.sum(weight(i,location))
 
 def tstat(i,location,effect):
     """returns the scalar t from Eisenstein et al 2014 based on a 
@@ -175,18 +208,23 @@ def check_vs_p_image(location,effect):
     """
     # TODO: the "DV" column comes from a global variable rather than being 
     #    passed in as a parameter. Fix that?
-    with open(checkfilename,'w') as f:
-        header='subject,DV,x,y,z,observed,predicted,N,p,signedlog10p'
-        f.write(header+'\n')
-    with open(checkfilename,'a') as f:
-        writer = csv.writer(f)
-        for i in range(effect.size):
-            row = [subject[i], dv[i].decode(), *location[i], effect[i],
-                   ghat(location[i],location,effect), 
-                   N(location[i],location),
-                   pstat(location[i],location,effect), 
-                   signedlogp(location[i],location,effect)]
-            writer.writerow(row)
+    
+    if write_results:
+        with open(checkfilename,'w') as f:
+            header='subject,DV,x,y,z,observed,predicted,N,p,signedlog10p'
+            f.write(header+'\n')
+        with open(checkfilename,'a') as f:
+            writer = csv.writer(f)
+            for i in range(effect.size):
+                row = [subject[i], dv[i].decode(), *location[i], effect[i],
+                       ghat(location[i],location,effect), 
+                       N(location[i],location),
+                       pstat(location[i],location,effect), 
+                       signedlogp(location[i],location,effect)]
+                writer.writerow(row)
+        print('Check p image at each contact location with {0}'.format(
+                checkfilename))
+
 
 def loocv(location,effect):
     """Creates a file 'outputfilename' that contains, for each contact tested,
@@ -208,44 +246,46 @@ def loocv(location,effect):
     """
     # TODO: the "DV" column comes from a global variable rather than being 
     #    passed in as a parameter. Fix that?
+    if write_results:
     # TODO: deal with over-writing file with 'w' below, if it exists
-    with open(outputfilename,'w') as outfile:
-        header='subject,DV,x,y,z,observed,predicted,N,p,signedlog10p'
-        outfile.write(header+'\n')
-    with open(outputfilename,'a') as outfile:
-        writer = csv.writer(outfile)
-        for i in range(effect.size):
-            # Find index(indices) corresponding to this subject
-            s = subject[i]
-            s_index = subject==s
-            esses = s_index.nonzero()[0]  # same as np.where(subject==s)
-            # Drop ALL the subject's values from (a copy of) the location and 
-            # effect arrays, to create new location and effect arrays with that 
-            # subject's values missing.
-            loc2 = np.delete(location,esses,axis=0)
-            eff2 = np.delete(effect,  esses,axis=0)
+        with open(outputfilename,'w') as outfile:
+            header='subject,DV,x,y,z,observed,predicted,N,p,signedlog10p'
+            outfile.write(header+'\n')
+        with open(outputfilename,'a') as outfile:
+            writer = csv.writer(outfile)
+            for i in range(effect.size):
+                # Find index(indices) corresponding to this subject
+                s = subject[i]
+                s_index = subject==s
+                esses = s_index.nonzero()[0]  # same as np.where(subject==s)
+                # Drop ALL the subject's values from (a copy of) the location and 
+                # effect arrays, to create new location and effect arrays with that 
+                # subject's values missing.
+                loc2 = np.delete(location,esses,axis=0)
+                eff2 = np.delete(effect,  esses,axis=0)
+        
+                # Using those new arrays, report (for ordinate on later plot) the
+                # weighted mean for this location at which this subject was stimulated,
+                # i.e. the expected effect predicted by all the other subjects' data
+                # for stimulation at that location. 
+                # BUT, also report N at that location, and the p value at that
+                # location, so we can ignore (or weight lower) any prediction made 
+                # at locations where we had little data [not counting this subject's
+                # data], or at which we had low confidence at that point anyway.
+                
+                # Sample header and one subject's data for output CSV file:
+                # "subject","x","y","z","observed","predicted","N","p"
+                # subject_id,x1,y1,z1,effect1,weighted_mean1,N1,p1,logp1
+                # subject_id,x2,y2,z2,effect2,weighted_mean2,N2,p2logp2
     
-            # Using those new arrays, report (for ordinate on later plot) the
-            # weighted mean for this location at which this subject was stimulated,
-            # i.e. the expected effect predicted by all the other subjects' data
-            # for stimulation at that location. 
-            # BUT, also report N at that location, and the p value at that
-            # location, so we can ignore (or weight lower) any prediction made 
-            # at locations where we had little data [not counting this subject's
-            # data], or at which we had low confidence at that point anyway.
-            
-            # Sample header and one subject's data for output CSV file:
-            # "subject","x","y","z","observed","predicted","N","p"
-            # subject_id,x1,y1,z1,effect1,weighted_mean1,N1,p1,logp1
-            # subject_id,x2,y2,z2,effect2,weighted_mean2,N2,p2logp2
-
-            row = [subject[i], dv[i].decode(), *location[i], effect[i],
-                   ghat(location[i],loc2,eff2), N(location[i],loc2),
-                   pstat(location[i],loc2,eff2), 
-                   signedlogp(location[i],loc2,eff2)]
-            writer.writerow(row)
-        # end for loop (for each contact)
-    # end with (open outfile)
+                row = [subject[i], dv[i].decode(), *location[i], effect[i],
+                       ghat(location[i],loc2,eff2), N(location[i],loc2),
+                       pstat(location[i],loc2,eff2), 
+                       signedlogp(location[i],loc2,eff2)]
+                writer.writerow(row)
+            # end for loop (for each contact)
+        # end with (open outfile)
+        print('LOOCV results written to {0}'.format(outputfilename))
 
     # After this loop we should be finished making the file we'll need to
     # test how well we predict--at points where we are relatively more
@@ -257,10 +297,12 @@ def loocv(location,effect):
     # threshold for p (or for N, for that matter) is arbitrary, and that
     # caveat should be kept in mind in interpreting the results. 
 
-# Finally, data loaded, functions defined, so do what we came to do:
+# Finally, functions defined, so do what we came to do:
+
+#######################
+# main() equivalent
+#######################
+
+get_data(real_data)
 check_vs_p_image(location,effect)
 loocv(location,effect)
-
-print('Check p image at each contact location with {0}'.format(
-        checkfilename))
-print('LOOCV results written to {0}'.format(outputfilename))
