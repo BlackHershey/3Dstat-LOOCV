@@ -28,10 +28,6 @@ write_results = True
 # Definitions of variables
 fwhm = np.linspace(1.0,4.0,num=1+30)
 # NOTE: in the Eisenstein et al. 2014 paper, we used FWHM = 3.0mm.
-gauss_sd = fwhm/(2*math.sqrt(2*ln2))  # ~1.274 mm, for FWHM=3.0mm
-peak_pdf = norm.pdf(0.0,scale = fwhm/(2*math.sqrt(2*ln2))) 
-# NOTE: That's the maximum value of the nl. distribution with this fwhm
-# It's 0.3131, dimensionless, for FWHM=3
 
 # Default input data filenames
 default_data_dir = os.path.join(os.getcwd(),'data','from_linux')
@@ -40,16 +36,26 @@ default_vdata_filename = os.path.join(default_data_dir,
 default_ddata_filename = os.path.join(default_data_dir,
                               'Dorsal_Coordinates_xyz_Atl_AG_2-10-16.txt')
 
+# Default output filenames
+outroot = 'test'
+outputfilename = outroot + '_LOOCV.csv'
+checkfilename  = outroot + '_checkp.csv'
+
 #######################
 # FUNCTION DEFINITIONS
 #######################
 
 def get_data(real_data=True):
+    """Reads files named on command line (or defaults), and returns
+    the following numpy arrays:
+    subject, effect, dv, location, vdata, ddata
+    """
+    global outputfilename, checkfilename
     if real_data:
         # https://docs.python.org/3/howto/argparse.html
         parser = argparse.ArgumentParser(
                 description="act on a text effect file")
-        parser.add_argument("effect_file", type=str,
+        parser.add_argument("effect", type=str,
                 help="text effect file e.g. Valence_Text_File_6-14_AG.csv")
         parser.add_argument('-d',"--dorsal", type=str,
                 help="file with dorsal contact coordinates, e.g. "+
@@ -61,19 +67,19 @@ def get_data(real_data=True):
                 default=default_vdata_filename)
         args = parser.parse_args()
         # TODO: validate file input etc.
-        effectfilename = args.effect_file
+        effectfilename = args.effect
         ddata_filename = args.dorsal
         vdata_filename = args.ventral
         edata = np.genfromtxt(effectfilename, delimiter=",", names=True,
                              dtype="uint16,float64,S8") 
-        fileroot, fileext = os.path.splitext(effectfilename)
-        outputfilename = fileroot + '_LOOCV.csv'
-        checkfilename  = fileroot + '_checkp.csv'
+        outroot, fileext = os.path.splitext(effectfilename)
+        outputfilename = outroot + '_LOOCV.csv'
+        checkfilename  = outroot + '_checkp.csv'
         subject = edata['subjects']
         effect  = edata['measures']
         dv      = edata['DV']
         location = np.zeros((subject.size,3)) 
-            # 1 row for each subject, 3 columns (x,y,z)
+        # 1 row, location[i], for each subject, by 3 columns (x,y,z)
         #  now read in coordinates data "location" for each line in effect
         vdata = np.genfromtxt(vdata_filename, delimiter="\t", names=True,
                               dtype='uint16,S1,float64,float64,float64')
@@ -91,16 +97,19 @@ def get_data(real_data=True):
                 location[i] = \
                     np.asscalar(vdata[np.where(vdata['DVP_id']==\
                                                edata['subjects'][i])])[2:]
+        return subject, effect, dv, location
     else:  # if not real_data, we're testing with a toy dataset
-        inputfilename  = '3Dstat_input.csv'
-        outputfilename = '3Dstat_loocv.csv'
+        # inputfilename  = '3Dstat_input.csv'
         n_points = 9
-        effect = np.arange(n_points)/10
         subject = np.asarray([1,1,2,2,3,4,5,5,6])
+        effect = np.arange(n_points)/10
         loc_mean = np.asarray([14.0,-17.0,-3.0])
         loc_sd   = 1.0*np.ones(3)
         location = loc_mean + loc_sd*np.random.randn(n_points,3)
         #  location[0] returns x,y,z for contact location 0
+        dv = np.which(np.random.random_integers(0,1,n_points),
+                      b'dorsal',b'ventral')
+        return subject, effect, dv, location
 
 # TODO: validate input to all functions
 
@@ -110,19 +119,19 @@ def distance(x,location):
     """
     return np.sqrt(np.sum(np.square(x-location), axis=1))
 
-def weight(x,location,pdfpeak=3.0/(2*math.sqrt(2*ln2))):
+def weight(x,location):
     """returns an array of weights as in Eisenstein et al 2014 based on the 
     distance between the point x and each point in an array 'location' of 
     contact coordinates, scaled by the scalar pdfpeak so that at x=0 the
     (maximal) weight is 1. NOTE: scaling by pdfpeak was inadvertently omitted 
     from the discussion in the paper.
-    The default value for pdfpeak is for FWHM = 3.0mm.
     """
-    return norm.pdf(distance(x,location),loc=0,scale=gauss_sd)/pdfpeak
+    global gauss_sd, peak_pdf
+    return norm.pdf(distance(x,location),loc=0,scale=gauss_sd)/peak_pdf
     # We divide by peak_pdf because in the functions below we want to 
     # threshold at 1/20 of, or 0.05 times, the maximum possible probability 
 
-def N(x,location,pdfpeak=3.0/(2*math.sqrt(2*)),threshold=0.05):
+def N(x,location,pdfpeak=3.0/(2*math.sqrt(2*ln2)),threshold=0.05):
     """returns the scalar value Ni from Eisenstein et al 2014 based on a 
     point x and an array location of contact coordinates. The default
     value for pdfpeak is for FWHM = 3.0mm.
@@ -303,6 +312,19 @@ def loocv(location,effect):
 # main() equivalent
 #######################
 
-get_data(real_data)
-check_vs_p_image(location,effect)
-loocv(location,effect)
+subject, effect, dv, location = get_data(real_data)
+output1 = outputfilename
+check1  = checkfilename
+for fwhm1 in fwhm: 
+    fwhm_string = '_fwhm_' + str(round(fwhm,2)).replace('.','p') + 'mm'
+    # define two global variables, to avoid passing them
+    # through all the functions down to weight() and recalculating
+    # them each time we run weight()
+    outputfilename = output1 + fwhm_string
+    checkfilename  = check1  + fwhm_string
+    gauss_sd = fwhm1/(2*math.sqrt(2*ln2))  # ~1.274 mm, for FWHM=3.0mm
+    peak_pdf = norm.pdf(0.0,scale = gauss_sd) 
+    # NOTE: peak_pdf is the maximum value of the normal distribution with 
+    # this fwhm. For FWHM=3, it's ~0.3131 (dimensionless).
+    check_vs_p_image(location,effect)
+    loocv(location,effect)
