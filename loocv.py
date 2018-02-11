@@ -26,7 +26,9 @@ real_data = True
 write_results = True
 
 # Definitions of variables
-fwhm = np.linspace(1.0,4.0,num=1+30)
+fwhmmax = 4.0
+fwhmmin = 2.0
+fwhm = np.linspace(fwhmmin,fwhmmax,num=int(round(1+10*(fwhmmax-fwhmmin),0)))
 # NOTE: in the Eisenstein et al. 2014 paper, we used FWHM = 3.0mm.
 
 # Default input data filenames
@@ -35,11 +37,6 @@ default_vdata_filename = os.path.join(default_data_dir,
                               'Ventral_Coordinates_xyz_Atl_AG_2-10-16.txt')
 default_ddata_filename = os.path.join(default_data_dir,
                               'Dorsal_Coordinates_xyz_Atl_AG_2-10-16.txt')
-
-# Default output filenames
-outroot = 'test'
-outputfilename = outroot + '_LOOCV.csv'
-checkfilename  = outroot + '_checkp.csv'
 
 #######################
 # FUNCTION DEFINITIONS
@@ -50,7 +47,6 @@ def get_data(real_data=True):
     the following numpy arrays:
     subject, effect, dv, location, vdata, ddata
     """
-    global outputfilename, checkfilename
     if real_data:
         # https://docs.python.org/3/howto/argparse.html
         parser = argparse.ArgumentParser(
@@ -73,8 +69,6 @@ def get_data(real_data=True):
         edata = np.genfromtxt(effectfilename, delimiter=",", names=True,
                              dtype="uint16,float64,S8") 
         outroot, fileext = os.path.splitext(effectfilename)
-        outputfilename = outroot + '_LOOCV.csv'
-        checkfilename  = outroot + '_checkp.csv'
         subject = edata['subjects']
         effect  = edata['measures']
         dv      = edata['DV']
@@ -97,9 +91,10 @@ def get_data(real_data=True):
                 location[i] = \
                     np.asscalar(vdata[np.where(vdata['DVP_id']==\
                                                edata['subjects'][i])])[2:]
-        return subject, effect, dv, location
+        return outroot, subject, effect, dv, location
     else:  # if not real_data, we're testing with a toy dataset
         # inputfilename  = '3Dstat_input.csv'
+        outroot = 'test'
         n_points = 9
         subject = np.asarray([1,1,2,2,3,4,5,5,6])
         effect = np.arange(n_points)/10
@@ -109,7 +104,7 @@ def get_data(real_data=True):
         #  location[0] returns x,y,z for contact location 0
         dv = np.which(np.random.random_integers(0,1,n_points),
                       b'dorsal',b'ventral')
-        return subject, effect, dv, location
+        return outroot, subject, effect, dv, location
 
 # TODO: validate input to all functions
 
@@ -152,7 +147,7 @@ def ghat(i,location,effect):
     Output:
         a scalar, g^_i, the weighted mean, i.e. the best estimate of 
         stimulation at point i based on the effect and location data at
-        (other) points
+        (generally) other points
     """
     return np.sum(np.multiply(effect,weight(i,location)))/np.sum(weight(i,location))
 
@@ -167,6 +162,11 @@ def tstat(i,location,effect):
         SSEweighted = N(i,location)* \
             (np.sum(np.multiply(weight(i,location),effect**2))/ \
              np.sum(weight(i,location)) - ghat(i,location,effect)**2)
+        if np.sum(np.isnan(SSEweighted))>0:
+            print('*** SSEweighted has a NaN value. ***')
+        if SSEweighted < 1e-10:
+            print('*** ghat denominator problem, SSEweighted = {0} ***'.\
+                  format(SSEweighted))
         return ghat(i,location,effect)*np.sqrt(N(i,location))/ \
             np.sqrt(SSEweighted/(N(i,location)-1))
 
@@ -175,7 +175,11 @@ def pstat(i,location,effect):
     point i, an array location of contact coordinates, and an array effect
     of the effect observed when stimulated at that coordinate
     """
-    return 1.0 - t.cdf(tstat(i,location,effect), N(i,location)-1)  # N-1 d.f.
+    df = N(i,location)-1  # N-1 d.f.
+    if df <=0:
+        return 1.0 
+    else:
+        return 1.0 - t.cdf(tstat(i,location,effect), df)
 
 def signedlogp(i,location,effect):
     """Returns the scalar value we used to create 2D and 3D p images for
@@ -196,7 +200,7 @@ def signedlogp(i,location,effect):
         return math.copysign(20.0,t) # = sign(t)*20
     else:
         # copysign applies the sign of temp to _abs. val._ of 1st argument
-        # but for 0<p<1, |log10p| = -log10p.
+        # Note that for 0<p<1, |log10p| = -log10p.
         return math.copysign(math.log10(p),t) # = sign(t)*(-log10(p))
 
 def check_vs_p_image(location,effect):
@@ -235,7 +239,7 @@ def check_vs_p_image(location,effect):
                 checkfilename))
 
 
-def loocv(location,effect):
+def loocv(location,effect,write_results=True):
     """Creates a file 'outputfilename' that contains, for each contact tested,
        a leave-one-out cross-validation measure of utility of the statistical
        images created by the procedure in Eisenstein et al 2014. 
@@ -255,42 +259,58 @@ def loocv(location,effect):
     """
     # TODO: the "DV" column comes from a global variable rather than being 
     #    passed in as a parameter. Fix that?
-    if write_results:
+    predicted = np.zeros(effect.size)
+    pstats    = np.zeros(effect.size)
+    ns        = np.zeros(effect.size)
+    signedlogps = np.zeros(effect.size)
     # TODO: deal with over-writing file with 'w' below, if it exists
+    for i in range(effect.size):
+        # Find index(indices) corresponding to this subject
+        esses = np.where(subject==subject[i])
+        # Drop ALL the subject's values from (a copy of) the location and 
+        # effect arrays, to create new location and effect arrays with that 
+        # subject's values missing.
+        loc2 = np.delete(location,esses,axis=0)
+        eff2 = np.delete(effect,  esses,axis=0)
+
+        # Using those new arrays, report (for ordinate on later plot) the
+        # weighted mean for this location at which this subject was stimulated,
+        # i.e. the expected effect predicted by all the other subjects' data
+        # for stimulation at that location. 
+        # BUT, also report N at that location, and the p value at that
+        # location, so we can ignore (or weight lower) any prediction made 
+        # at locations where we had little data [not counting this subject's
+        # data], or at which we had low confidence at that point anyway.
+        
+        # Sample header and one subject's data for output CSV file:
+        # "subject","x","y","z","observed","predicted","N","p"
+        # subject_id,x1,y1,z1,effect1,weighted_mean1,N1,p1,logp1
+        # subject_id,x2,y2,z2,effect2,weighted_mean2,N2,p2logp2
+        
+        predicted[i] =  ghat(location[i],loc2,eff2)
+        ns[i]        = N(location[i],loc2)
+        pstats[i]    = pstat(location[i],loc2,eff2)
+        signedlogps[i] = signedlogp(location[i],loc2,eff2)
+    # end for loop (for each contact)
+    
+    print('LOOCV correlation of effect vs. predicted, r={0:.4f}.'.\
+          format(np.corrcoef(predicted,effect)[0,1]))
+    for p in (0.05, 0.005):
+        mask = np.where(pstats<p)
+        print('LOOCV correlation only for contacts where '+
+              'pstat<{0:.3f}, r={1:.4f}.'.\
+              format(p,np.corrcoef(predicted[mask],effect[mask])[0,1]))
+        
+    if write_results:
         with open(outputfilename,'w') as outfile:
             header='subject,DV,x,y,z,observed,predicted,N,p,signedlog10p'
             outfile.write(header+'\n')
         with open(outputfilename,'a') as outfile:
             writer = csv.writer(outfile)
             for i in range(effect.size):
-                # Find index(indices) corresponding to this subject
-                s = subject[i]
-                s_index = subject==s
-                esses = s_index.nonzero()[0]  # same as np.where(subject==s)
-                # Drop ALL the subject's values from (a copy of) the location and 
-                # effect arrays, to create new location and effect arrays with that 
-                # subject's values missing.
-                loc2 = np.delete(location,esses,axis=0)
-                eff2 = np.delete(effect,  esses,axis=0)
-        
-                # Using those new arrays, report (for ordinate on later plot) the
-                # weighted mean for this location at which this subject was stimulated,
-                # i.e. the expected effect predicted by all the other subjects' data
-                # for stimulation at that location. 
-                # BUT, also report N at that location, and the p value at that
-                # location, so we can ignore (or weight lower) any prediction made 
-                # at locations where we had little data [not counting this subject's
-                # data], or at which we had low confidence at that point anyway.
-                
-                # Sample header and one subject's data for output CSV file:
-                # "subject","x","y","z","observed","predicted","N","p"
-                # subject_id,x1,y1,z1,effect1,weighted_mean1,N1,p1,logp1
-                # subject_id,x2,y2,z2,effect2,weighted_mean2,N2,p2logp2
-    
-                row = [subject[i], dv[i].decode(), *location[i], effect[i],
-                       ghat(location[i],loc2,eff2), N(location[i],loc2),
-                       pstat(location[i],loc2,eff2), 
-                       signedlogp(location[i],loc2,eff2)]
+                row = [subject[i], dv[i].decode(), *location[i], 
+                       effect[i], predicted[i], 
+                       ns[i], pstats[i], signedlogps[i]]
                 writer.writerow(row)
             # end for loop (for each contact)
         # end with (open outfile)
@@ -312,19 +332,16 @@ def loocv(location,effect):
 # main() equivalent
 #######################
 
-subject, effect, dv, location = get_data(real_data)
-output1 = outputfilename
-check1  = checkfilename
+outroot, subject, effect, dv, location = get_data(real_data)
 for fwhm1 in fwhm: 
-    fwhm_string = '_fwhm_' + str(round(fwhm,2)).replace('.','p') + 'mm'
-    # define two global variables, to avoid passing them
-    # through all the functions down to weight() and recalculating
-    # them each time we run weight()
-    outputfilename = output1 + fwhm_string
-    checkfilename  = check1  + fwhm_string
+    fwhm_string = '_fwhm_' + str(round(fwhm1,2)).replace('.','p') + 'mm'
+    outputfilename = outroot + fwhm_string + '_LOOCV.csv'
+    checkfilename  = outroot + fwhm_string + '_checkp.csv'
+    # The next 2 variables are global variables, used in function weight().
     gauss_sd = fwhm1/(2*math.sqrt(2*ln2))  # ~1.274 mm, for FWHM=3.0mm
     peak_pdf = norm.pdf(0.0,scale = gauss_sd) 
     # NOTE: peak_pdf is the maximum value of the normal distribution with 
     # this fwhm. For FWHM=3, it's ~0.3131 (dimensionless).
+    print('\n*** USING FWHM = {0:.1f}: ***'.format(fwhm1))
     check_vs_p_image(location,effect)
     loocv(location,effect)
