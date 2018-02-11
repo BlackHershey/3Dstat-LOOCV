@@ -298,8 +298,9 @@ def loocv(location,effect,write_results=True):
     for p in (0.05, 0.005):
         mask = np.where(pstats<p)
         print('LOOCV correlation only for contacts where '+
-              'pstat<{0:.3f}, r={1:.4f}.'.\
-              format(p,np.corrcoef(predicted[mask],effect[mask])[0,1]))
+              'pstat<{0:.3f}, N={1:d}, r={2:.4f}.'.\
+              format(p, len(mask[0]),
+                     np.corrcoef(predicted[mask],effect[mask])[0,1]))
         
     if write_results:
         with open(outputfilename,'w') as outfile:
