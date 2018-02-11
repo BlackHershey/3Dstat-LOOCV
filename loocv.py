@@ -8,6 +8,7 @@ See https://github.com/BlackHershey/3Dstat-LOOCV for purpose and for
 any newer versions.
 """
 
+#import sys # for exit(), used if DEBUG
 import argparse
 import os
 import math
@@ -18,17 +19,19 @@ from scipy.stats import t  # for function pstat
 import csv
 
 ln2 = math.log(2)
+DEBUG = True
 
 # Read real data from files? (as opposed to generate a toy data set)
 real_data = True
 
 # Write out results?
-write_results = True
+write_results = False
 
 # Definitions of variables
-fwhmmax = 4.0
-fwhmmin = 2.0
-fwhm = np.linspace(fwhmmin,fwhmmax,num=int(round(1+10*(fwhmmax-fwhmmin),0)))
+fwhmmax = 4.0 # mm
+fwhmmin = 2.0 # mm
+# check it out every 0.2mm
+fwhm = np.linspace(fwhmmin,fwhmmax,num=int(round(1+5*(fwhmmax-fwhmmin),0)))
 # NOTE: in the Eisenstein et al. 2014 paper, we used FWHM = 3.0mm.
 
 # Default input data filenames
@@ -203,7 +206,7 @@ def signedlogp(i,location,effect):
         # Note that for 0<p<1, |log10p| = -log10p.
         return math.copysign(math.log10(p),t) # = sign(t)*(-log10(p))
 
-def check_vs_p_image(location,effect):
+def check_vs_p_image(location,effect,write_results=True):
     """Creates a file 'checkfilename' that should contain more or less
        the same numbers for weighted mean ("predicted"), N and p as 
        are in the weighted mean, N and p images. "More or less" is because
@@ -222,6 +225,20 @@ def check_vs_p_image(location,effect):
     # TODO: the "DV" column comes from a global variable rather than being 
     #    passed in as a parameter. Fix that?
     
+    predicted = np.zeros(effect.size)
+    pstats    = np.zeros(effect.size)
+    for i in range(effect.size):
+        predicted[i] = ghat(location[i],location,effect)
+        pstats[i]    = pstat(location[i],location,effect)
+    print('All data: correlation of effect vs. predicted, N={0:d}, r={1:.4f}'.\
+          format(effect.size, np.corrcoef(predicted,effect)[0,1]))
+    for p in (0.05, 0.005):
+        mask = np.where(pstats<p)
+        print('All data: correlation only for contacts where '+
+              'pstat<{0:.3f}, N={1:d}, r={2:.4f}'.\
+              format(p, len(mask[0]),
+                     np.corrcoef(predicted[mask],effect[mask])[0,1]))
+
     if write_results:
         with open(checkfilename,'w') as f:
             header='subject,DV,x,y,z,observed,predicted,N,p,signedlog10p'
@@ -230,9 +247,7 @@ def check_vs_p_image(location,effect):
             writer = csv.writer(f)
             for i in range(effect.size):
                 row = [subject[i], dv[i].decode(), *location[i], effect[i],
-                       ghat(location[i],location,effect), 
-                       N(location[i],location),
-                       pstat(location[i],location,effect), 
+                       predicted[i], N(location[i],location), pstats[i], 
                        signedlogp(location[i],location,effect)]
                 writer.writerow(row)
         print('Check p image at each contact location with {0}'.format(
@@ -257,6 +272,7 @@ def loocv(location,effect,write_results=True):
            remaining after removing all data from this subject. N, p and
            signedlog10p are as described for the function check_vs_p_image().
     """
+    global DEBUG
     # TODO: the "DV" column comes from a global variable rather than being 
     #    passed in as a parameter. Fix that?
     predicted = np.zeros(effect.size)
@@ -281,24 +297,22 @@ def loocv(location,effect,write_results=True):
         # location, so we can ignore (or weight lower) any prediction made 
         # at locations where we had little data [not counting this subject's
         # data], or at which we had low confidence at that point anyway.
-        
-        # Sample header and one subject's data for output CSV file:
-        # "subject","x","y","z","observed","predicted","N","p"
-        # subject_id,x1,y1,z1,effect1,weighted_mean1,N1,p1,logp1
-        # subject_id,x2,y2,z2,effect2,weighted_mean2,N2,p2logp2
-        
         predicted[i] =  ghat(location[i],loc2,eff2)
         ns[i]        = N(location[i],loc2)
         pstats[i]    = pstat(location[i],loc2,eff2)
         signedlogps[i] = signedlogp(location[i],loc2,eff2)
     # end for loop (for each contact)
-    
-    print('LOOCV correlation of effect vs. predicted, r={0:.4f}.'.\
-          format(np.corrcoef(predicted,effect)[0,1]))
+
+    #if DEBUG:
+    #    print('predicted,effect:\n',np.around(predicted,2),
+    #          '\n',np.around(effect,2))
+    #    sys.exit('Exit at line 295. DEBUG is {0}.'.format(DEBUG))
+    print('LOOCV correlation of effect vs. predicted, N={0:d}, r={1:.4f}'.\
+          format(effect.size, np.corrcoef(predicted,effect)[0,1]))
     for p in (0.05, 0.005):
         mask = np.where(pstats<p)
         print('LOOCV correlation only for contacts where '+
-              'pstat<{0:.3f}, N={1:d}, r={2:.4f}.'.\
+              'pstat<{0:.3f}, N={1:d}, r={2:.4f}'.\
               format(p, len(mask[0]),
                      np.corrcoef(predicted[mask],effect[mask])[0,1]))
         
@@ -344,5 +358,5 @@ for fwhm1 in fwhm:
     # NOTE: peak_pdf is the maximum value of the normal distribution with 
     # this fwhm. For FWHM=3, it's ~0.3131 (dimensionless).
     print('\n*** USING FWHM = {0:.1f}: ***'.format(fwhm1))
-    check_vs_p_image(location,effect)
-    loocv(location,effect)
+    check_vs_p_image(location,effect,write_results)
+    loocv(location,effect,write_results)
