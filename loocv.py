@@ -37,9 +37,9 @@ fwhm = np.linspace(fwhmmin,fwhmmax,num=int(round(1+5*(fwhmmax-fwhmmin),0)))
 # Default input data filenames
 default_data_dir = os.path.join(os.getcwd(),'data','from_linux')
 default_vdata_filename = os.path.join(default_data_dir,
-                              'Ventral_Coordinates_xyz_Atl_AG_2-10-16.txt')
+                              'Ventral_Coordinates_xyz_Atl_20180207.txt.txt')
 default_ddata_filename = os.path.join(default_data_dir,
-                              'Dorsal_Coordinates_xyz_Atl_AG_2-10-16.txt')
+                              'Dorsal_Coordinates_xyz_Atl_20180207.txt')
 
 #######################
 # FUNCTION DEFINITIONS
@@ -253,7 +253,6 @@ def check_vs_p_image(location,effect,write_results=True):
         print('Check p image at each contact location with {0}'.format(
                 checkfilename))
 
-
 def loocv(location,effect,write_results=True):
     """Creates a file 'outputfilename' that contains, for each contact tested,
        a leave-one-out cross-validation measure of utility of the statistical
@@ -283,9 +282,8 @@ def loocv(location,effect,write_results=True):
     for i in range(effect.size):
         # Find index(indices) corresponding to this subject
         esses = np.where(subject==subject[i])
-        # Drop ALL the subject's values from (a copy of) the location and 
-        # effect arrays, to create new location and effect arrays with that 
-        # subject's values missing.
+		# Create new location and effect arrays with 
+		# ALL of this subject's contacts missing.
         loc2 = np.delete(location,esses,axis=0)
         eff2 = np.delete(effect,  esses,axis=0)
 
