@@ -25,19 +25,24 @@ DEBUG = True
 real_data = True
 
 # Write out results?
-write_results = False
+write_results = True
+# Filter results by p value at each active contact location?
+# (Don't see why we should--info from where DBS does nothing should be
+# equally as valuable. Could imagine filtering by N, though.)
+filter_results_p = False
+filter_results_N = True
 
 # Definitions of variables
-fwhmmax = 4.0 # mm
-fwhmmin = 2.0 # mm
-# check it out every 0.2mm
-fwhm = np.linspace(fwhmmin,fwhmmax,num=int(round(1+5*(fwhmmax-fwhmmin),0)))
+fwhmmax = 3.0 # mm
+fwhmmin = 3.0 # mm
+# check it out every 0.5mm
+fwhm = np.linspace(fwhmmin,fwhmmax,num=int(round(1+2*(fwhmmax-fwhmmin),0)))
 # NOTE: in the Eisenstein et al. 2014 paper, we used FWHM = 3.0mm.
 
 # Default input data filenames
 default_data_dir = os.path.join(os.getcwd(),'data','from_linux')
 default_vdata_filename = os.path.join(default_data_dir,
-                              'Ventral_Coordinates_xyz_Atl_20180207.txt.txt')
+                              'Ventral_Coordinates_xyz_Atl_20180207.txt')
 default_ddata_filename = os.path.join(default_data_dir,
                               'Dorsal_Coordinates_xyz_Atl_20180207.txt')
 
@@ -129,7 +134,7 @@ def weight(x,location):
     # We divide by peak_pdf because in the functions below we want to 
     # threshold at 1/20 of, or 0.05 times, the maximum possible probability 
 
-def N(x,location,pdfpeak=3.0/(2*math.sqrt(2*ln2)),threshold=0.05):
+def N(x,location,threshold=0.05):
     """returns the scalar value Ni from Eisenstein et al 2014 based on a 
     point x and an array location of contact coordinates. The default
     value for pdfpeak is for FWHM = 3.0mm.
@@ -152,7 +157,8 @@ def ghat(i,location,effect):
         stimulation at point i based on the effect and location data at
         (generally) other points
     """
-    return np.sum(np.multiply(effect,weight(i,location)))/np.sum(weight(i,location))
+    return np.sum(np.multiply(effect,weight(i,location)))/ \
+            np.sum(weight(i,location))
 
 def tstat(i,location,effect):
     """returns the scalar t from Eisenstein et al 2014 based on a 
@@ -162,6 +168,8 @@ def tstat(i,location,effect):
     if N(i,location)<6:
         return 0.0
     else:
+        # TODO: IMPORTANT: is this correct? Does this exclude data from
+        # contacts whose weight at this point is < .05?
         SSEweighted = N(i,location)* \
             (np.sum(np.multiply(weight(i,location),effect**2))/ \
              np.sum(weight(i,location)) - ghat(i,location,effect)**2)
@@ -227,17 +235,27 @@ def check_vs_p_image(location,effect,write_results=True):
     
     predicted = np.zeros(effect.size)
     pstats    = np.zeros(effect.size)
+    ns        = np.zeros(effect.size)
     for i in range(effect.size):
         predicted[i] = ghat(location[i],location,effect)
         pstats[i]    = pstat(location[i],location,effect)
+        ns[i]        = N(location[i],location)
     print('All data: correlation of effect vs. predicted, N={0:d}, r={1:.4f}'.\
           format(effect.size, np.corrcoef(predicted,effect)[0,1]))
-    for p in (0.05, 0.005):
-        mask = np.where(pstats<p)
-        print('All data: correlation only for contacts where '+
-              'pstat<{0:.3f}, N={1:d}, r={2:.4f}'.\
-              format(p, len(mask[0]),
-                     np.corrcoef(predicted[mask],effect[mask])[0,1]))
+    if filter_results_p:
+        for p in [0.05, 0.005]:
+            mask = np.where(pstats<p)
+            print('All data: correlation only for contacts where '+
+                  'pstat<{0:.3f}, N={1:d}, r={2:.4f}'.\
+                  format(p, len(mask[0]),
+                         np.corrcoef(predicted[mask],effect[mask])[0,1]))
+    if filter_results_N:
+        for Nmin in [6]:
+            mask = np.where(ns>=Nmin)
+            print('All data: correlation only for contacts where '+
+                  'N>={0:d}, N={1:d}, r={2:.4f}'.\
+                  format(Nmin, len(mask[0]),
+                         np.corrcoef(predicted[mask],effect[mask])[0,1]))
 
     if write_results:
         with open(checkfilename,'w') as f:
@@ -247,7 +265,7 @@ def check_vs_p_image(location,effect,write_results=True):
             writer = csv.writer(f)
             for i in range(effect.size):
                 row = [subject[i], dv[i].decode(), *location[i], effect[i],
-                       predicted[i], N(location[i],location), pstats[i], 
+                       predicted[i], ns[i], pstats[i], 
                        signedlogp(location[i],location,effect)]
                 writer.writerow(row)
         print('Check p image at each contact location with {0}'.format(
@@ -305,14 +323,22 @@ def loocv(location,effect,write_results=True):
     #    print('predicted,effect:\n',np.around(predicted,2),
     #          '\n',np.around(effect,2))
     #    sys.exit('Exit at line 295. DEBUG is {0}.'.format(DEBUG))
-    print('LOOCV correlation of effect vs. predicted, N={0:d}, r={1:.4f}'.\
+    print('LOOCV: correlation of effect vs. predicted, N={0:d}, r={1:.4f}'.\
           format(effect.size, np.corrcoef(predicted,effect)[0,1]))
-    for p in (0.05, 0.005):
-        mask = np.where(pstats<p)
-        print('LOOCV correlation only for contacts where '+
-              'pstat<{0:.3f}, N={1:d}, r={2:.4f}'.\
-              format(p, len(mask[0]),
-                     np.corrcoef(predicted[mask],effect[mask])[0,1]))
+    if filter_results_p:
+        for p in [0.05, 0.005]:
+            mask = np.where(pstats<p)
+            print('LOOCV correlation only for contacts where '+
+                  'pstat<{0:.3f}, N={1:d}, r={2:.4f}'.\
+                  format(p, len(mask[0]),
+                         np.corrcoef(predicted[mask],effect[mask])[0,1]))
+    if filter_results_N:
+        for Nmin in [6]:
+            mask = np.where(ns>=Nmin)
+            print('LOOCV: correlation only for contacts where '+
+                  'N>={0:d}, N={1:d}, r={2:.4f}'.\
+                  format(Nmin, len(mask[0]),
+                         np.corrcoef(predicted[mask],effect[mask])[0,1]))
         
     if write_results:
         with open(outputfilename,'w') as outfile:
