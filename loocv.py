@@ -24,8 +24,6 @@ DEBUG = True
 # Read real data from files? (as opposed to generate a toy data set)
 real_data = True
 
-# Write out results?
-write_results = True
 # Filter results by p value at each active contact location?
 # (Don't see why we should--info from where DBS does nothing should be
 # equally as valuable. Could imagine filtering by N, though.)
@@ -50,26 +48,35 @@ default_ddata_filename = os.path.join(default_data_dir,
 # FUNCTION DEFINITIONS
 #######################
 
+def parse_arguments():
+    # https://docs.python.org/3/howto/argparse.html
+    parser = argparse.ArgumentParser(
+            description="act on a text effect file")
+    parser.add_argument("effect", type=str,
+            help="text effect file e.g. Valence_Text_File_6-14_AG.csv")
+    parser.add_argument('-d',"--dorsal", type=str,
+            help="file with dorsal contact coordinates, e.g. "+
+                default_ddata_filename, 
+            default=default_ddata_filename)
+    parser.add_argument('-v',"--ventral", type=str,
+            help="file with dorsal contact coordinates, e.g. "+
+                default_ddata_filename,  
+            default=default_vdata_filename)
+    parser.add_argument('-w','--write', dest='write_results', 
+            help="write out results into a .csv files",
+            action='store_true')
+    parser.add_argument('-w-','--no-write', dest='write_results', 
+            help="do not write results into a .csv files",
+            action='store_false')
+    parser.set_defaults(write_results=False)
+    return parser.parse_args()
+
 def get_data(real_data=True):
     """Reads files named on command line (or defaults), and returns
     the following numpy arrays:
     subject, effect, dv, location, vdata, ddata
     """
     if real_data:
-        # https://docs.python.org/3/howto/argparse.html
-        parser = argparse.ArgumentParser(
-                description="act on a text effect file")
-        parser.add_argument("effect", type=str,
-                help="text effect file e.g. Valence_Text_File_6-14_AG.csv")
-        parser.add_argument('-d',"--dorsal", type=str,
-                help="file with dorsal contact coordinates, e.g. "+
-                    default_ddata_filename, 
-                default=default_ddata_filename)
-        parser.add_argument('-v',"--ventral", type=str,
-                help="file with dorsal contact coordinates, e.g. "+
-                    default_ddata_filename,  
-                default=default_vdata_filename)
-        args = parser.parse_args()
         # TODO: validate file input etc.
         effectfilename = args.effect
         ddata_filename = args.dorsal
@@ -371,6 +378,7 @@ def loocv(location,effect,write_results=True):
 # main() equivalent
 #######################
 
+args = parse_arguments()
 outroot, subject, effect, dv, location = get_data(real_data)
 for fwhm1 in fwhm: 
     fwhm_string = '_fwhm_' + str(round(fwhm1,2)).replace('.','p') + 'mm'
@@ -382,5 +390,5 @@ for fwhm1 in fwhm:
     # NOTE: peak_pdf is the maximum value of the normal distribution with 
     # this fwhm. For FWHM=3, it's ~0.3131 (dimensionless).
     print('\n*** USING FWHM = {0:.1f}: ***'.format(fwhm1))
-    check_vs_p_image(location,effect,write_results)
-    loocv(location,effect,write_results)
+    check_vs_p_image(location,effect,args.write_results)
+    loocv(location,effect,args.write_results)
