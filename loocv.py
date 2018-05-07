@@ -38,11 +38,9 @@ fwhm = np.linspace(fwhmmin,fwhmmax,num=int(round(1+2*(fwhmmax-fwhmmin),0)))
 # NOTE: in the Eisenstein et al. 2014 paper, we used FWHM = 3.0mm.
 
 # Default input data filenames
-default_data_dir = os.path.join(os.getcwd(),'data','from_linux')
-default_vdata_filename = os.path.join(default_data_dir,
-                              'Ventral_Coordinates_xyz_Atl_20180207.txt')
-default_ddata_filename = os.path.join(default_data_dir,
-                              'Dorsal_Coordinates_xyz_Atl_20180207.txt')
+default_data_dir = os.path.join(os.getcwd(),'data','from_submission')
+default_vdata_filename = 'Ventral_Contact_Coordinate_Locations.txt'
+default_ddata_filename = 'Dorsal_Contact_Coordinate_Locations.txt'
 
 #######################
 # FUNCTION DEFINITIONS
@@ -57,16 +55,16 @@ def parse_arguments():
     parser.add_argument('-d',"--dorsal", type=str,
             help="file with dorsal contact coordinates, e.g. "+
                 default_ddata_filename, 
-            default=default_ddata_filename)
+            default=os.path.join(default_data_dir,default_ddata_filename))
     parser.add_argument('-v',"--ventral", type=str,
-            help="file with dorsal contact coordinates, e.g. "+
-                default_ddata_filename,  
-            default=default_vdata_filename)
+            help="file with ventral contact coordinates, e.g. "+
+                default_vdata_filename,  
+            default=os.path.join(default_data_dir,default_vdata_filename))
     parser.add_argument('-w','--write', dest='write_results', 
-            help="write out results into a .csv files",
+            help="write out results into .csv files",
             action='store_true')
     parser.add_argument('-w-','--no-write', dest='write_results', 
-            help="do not write results into a .csv files",
+            help="do not write results into .csv files",
             action='store_false')
     parser.set_defaults(write_results=False)
     return parser.parse_args()
