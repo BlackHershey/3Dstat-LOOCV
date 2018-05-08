@@ -96,7 +96,7 @@ def get_data(real_data=True):
             assert dv[i]==b'dorsal' or dv[i]==b'ventral', \
                 'ERROR: {0} in DV info from effect file.'.format(dv[i])
             if dv[i] == b'dorsal':  # literal Unicode? byte string
-                # dv[i].decode() is the regular old string 'ventral', FYI
+                # dv[i].decode() is the regular old string 'dorsal', FYI
                 location[i] = \
                     np.asscalar(ddata[np.where(ddata['DVP_id']==\
                                                edata['subjects'][i])])[2:]
