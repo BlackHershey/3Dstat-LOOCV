@@ -38,7 +38,8 @@ fwhm = np.linspace(fwhmmin,fwhmmax,num=int(round(1+2*(fwhmmax-fwhmmin),0)))
 # NOTE: in the Eisenstein et al. 2014 paper, we used FWHM = 3.0mm.
 
 # Default input data filenames
-default_data_dir = os.path.join(os.getcwd(),'data','from_submission')
+#default_data_dir = os.path.join(os.getcwd(),'data','revision')
+default_data_dir = os.getcwd()
 default_vdata_filename = 'Ventral_Contact_Coordinate_Locations.txt'
 default_ddata_filename = 'Dorsal_Contact_Coordinate_Locations.txt'
 
