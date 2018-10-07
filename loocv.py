@@ -246,7 +246,7 @@ def check_vs_p_image(location,effect,write_results=True):
     for i in range(effect.size):
         predicted[i] = ghat(location[i],location,effect)
         pstats[i]    = pstat(location[i],location,effect)
-        ns[i]        = N(location[i],location)
+        ns[i]        = N(location[i],location,threshold=.5) # *****
     print('All data: correlation of effect vs. predicted, N={0:d}, r={1:.4f}'.\
           format(effect.size, np.corrcoef(predicted,effect)[0,1]))
     if filter_results_p:
@@ -257,7 +257,7 @@ def check_vs_p_image(location,effect,write_results=True):
                   format(p, len(mask[0]),
                          np.corrcoef(predicted[mask],effect[mask])[0,1]))
     if filter_results_N:
-        for Nmin in [6]:
+        for Nmin in [6,10,20]:
             mask = np.where(ns>=Nmin)
             print('All data: correlation only for contacts where '+
                   'N>={0:d}, N={1:d}, r={2:.4f}'.\
@@ -321,7 +321,7 @@ def loocv(location,effect,write_results=True):
         # at locations where we had little data [not counting this subject's
         # data], or at which we had low confidence at that point anyway.
         predicted[i] =  ghat(location[i],loc2,eff2)
-        ns[i]        = N(location[i],loc2)
+        ns[i]        = N(location[i],loc2,threshold=.5) # ****
         pstats[i]    = pstat(location[i],loc2,eff2)
         signedlogps[i] = signedlogp(location[i],loc2,eff2)
     # end for loop (for each contact)
@@ -340,7 +340,7 @@ def loocv(location,effect,write_results=True):
                   format(p, len(mask[0]),
                          np.corrcoef(predicted[mask],effect[mask])[0,1]))
     if filter_results_N:
-        for Nmin in [6]:
+        for Nmin in [6,10,20]:
             mask = np.where(ns>=Nmin)
             print('LOOCV: correlation only for contacts where '+
                   'N>={0:d}, N={1:d}, r={2:.4f}'.\
